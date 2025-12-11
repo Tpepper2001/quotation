@@ -1,474 +1,353 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
+  FileSpreadsheet, 
+  Download, 
   Plus, 
-  Camera, 
-  ChevronLeft, 
-  Search, 
   Trash2, 
-  FileText, 
-  Send, 
-  MoreVertical,
-  Calculator,
+  ChevronDown, 
+  ChevronRight, 
+  Briefcase,
+  Layers,
   Save
 } from 'lucide-react';
 
-// --- 1. MOCK "SMART" DATABASE ---
-// In a real app, this fetches from an API or local SQLite db
-const MATERIAL_DB = [
-  { id: 'm1', name: '2x4 Stud (8ft)', cost: 4.50, category: 'Framing', unit: 'ea' },
-  { id: 'm2', name: 'Drywall Sheet (4x8)', cost: 12.00, category: 'Drywall', unit: 'sheet' },
-  { id: 'm3', name: 'Joint Compound', cost: 18.00, category: 'Drywall', unit: 'bucket' },
-  { id: 'm4', name: 'Interior Paint', cost: 45.00, category: 'Finishing', unit: 'gal' },
-  { id: 'l1', name: 'General Labor', cost: 65.00, category: 'Labor', unit: 'hr' },
-  { id: 'l2', name: 'Electrical Rough-in', cost: 85.00, category: 'Labor', unit: 'hr' },
-  { id: 'c1', name: 'Concrete (3000psi)', cost: 140.00, category: 'Foundation', unit: 'yd³' },
-];
+// --- 1. INITIAL DATA STRUCTURE (CSI MasterFormat Style) ---
+const INITIAL_PROJECT = {
+  id: 1,
+  title: "Proposed Residential Block - Block A",
+  client: "Dangote Refinery Housing",
+  currency: "₦", // Change to $ or £ as needed
+  divisions: [
+    {
+      id: 'd1',
+      code: '03',
+      name: 'Concrete Works',
+      isOpen: true,
+      items: [
+        { id: 'i1', code: '3.1.1', desc: 'Grade 25 Concrete in Foundations', unit: 'm³', qty: 150, matRate: 45000, labRate: 5000, plantRate: 2000 },
+        { id: 'i2', code: '3.1.2', desc: 'Y12 High Yield Reinforcement', unit: 'kg', qty: 2500, matRate: 850, labRate: 150, plantRate: 0 },
+      ]
+    },
+    {
+      id: 'd2',
+      code: '04',
+      name: 'Masonry',
+      isOpen: false,
+      items: [
+        { id: 'i3', code: '4.1.1', desc: '225mm Sandcrete Hollow Blocks', unit: 'm²', qty: 400, matRate: 6000, labRate: 1200, plantRate: 0 },
+      ]
+    }
+  ]
+};
 
-// --- 2. UTILITY FUNCTIONS ---
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-US', {
+// --- 2. UTILITY: CURRENCY FORMATTER ---
+const formatMoney = (amount, currency = '₦') => {
+  return new Intl.NumberFormat('en-NG', {
     style: 'currency',
-    currency: 'NGN',
-  }).format(amount);
+    currency: 'NGN', // Using Naira as example based on your location, easy to change
+    currencyDisplay: 'narrowSymbol'
+  }).format(amount).replace('NGN', currency);
 };
 
 const App = () => {
-  // --- STATE MANAGEMENT ---
-  const [view, setView] = useState('dashboard'); // dashboard, builder, preview
-  const [activeQuote, setActiveQuote] = useState(null);
-  const [history, setHistory] = useState([
-    { id: 101, client: 'Smith Residence', total: 4500, status: 'Sent', date: 'Oct 12' },
-    { id: 102, client: 'Downtown Reno', total: 12400, status: 'Draft', date: 'Oct 14' },
-  ]);
-
-  // --- ACTIONS ---
-  const startNewQuote = () => {
-    setActiveQuote({
-      id: Date.now(),
-      clientName: '',
-      projectTitle: '',
-      items: [], // { id, name, qty, cost, unit, ... }
-      taxRate: 0.08,
-    });
-    setView('builder');
-  };
-
-  const saveQuote = () => {
-    // In real app: save to local storage/db
-    const existingIndex = history.findIndex(q => q.id === activeQuote.id);
-    const summary = {
-      id: activeQuote.id,
-      client: activeQuote.clientName || 'Untitled Project',
-      total: calculateTotal(activeQuote.items, activeQuote.taxRate).total,
-      status: 'Draft',
-      date: new Date().toLocaleDateString()
-    };
-
-    if (existingIndex >= 0) {
-      const newHistory = [...history];
-      newHistory[existingIndex] = summary;
-      setHistory(newHistory);
-    } else {
-      setHistory([summary, ...history]);
-    }
-    setView('dashboard');
-  };
+  const [project, setProject] = useState(INITIAL_PROJECT);
+  const [activeDivision, setActiveDivision] = useState(null); // For adding items
 
   // --- CALCULATIONS ---
-  const calculateTotal = (items, taxRate) => {
-    const subtotal = items.reduce((acc, item) => acc + (item.cost * item.qty), 0);
-    const tax = subtotal * taxRate;
-    return { subtotal, tax, total: subtotal + tax };
+  const projectTotal = useMemo(() => {
+    return project.divisions.reduce((divAcc, div) => {
+      const divTotal = div.items.reduce((itemAcc, item) => {
+        const rate = item.matRate + item.labRate + item.plantRate;
+        return itemAcc + (rate * item.qty);
+      }, 0);
+      return divAcc + divTotal;
+    }, 0);
+  }, [project]);
+
+  // --- ACTIONS ---
+  const toggleDivision = (divId) => {
+    setProject(prev => ({
+      ...prev,
+      divisions: prev.divisions.map(d => 
+        d.id === divId ? { ...d, isOpen: !d.isOpen } : d
+      )
+    }));
   };
 
-  // --- RENDER ROUTER ---
+  const updateItem = (divId, itemId, field, value) => {
+    setProject(prev => ({
+      ...prev,
+      divisions: prev.divisions.map(d => {
+        if (d.id !== divId) return d;
+        return {
+          ...d,
+          items: d.items.map(item => 
+            item.id === itemId ? { ...item, [field]: parseFloat(value) || 0 } : item
+          )
+        };
+      })
+    }));
+  };
+
+  const deleteItem = (divId, itemId) => {
+    setProject(prev => ({
+      ...prev,
+      divisions: prev.divisions.map(d => {
+        if (d.id !== divId) return d;
+        return { ...d, items: d.items.filter(i => i.id !== itemId) };
+      })
+    }));
+  };
+
+  const addDivision = () => {
+    const name = prompt("Enter Division Name (e.g., '05 Metals'):");
+    if (!name) return;
+    setProject(prev => ({
+      ...prev,
+      divisions: [...prev.divisions, {
+        id: Date.now().toString(),
+        code: '0X',
+        name: name,
+        isOpen: true,
+        items: []
+      }]
+    }));
+  };
+
+  const addItemToDivision = (divId) => {
+    const desc = prompt("Enter Item Description:");
+    if (!desc) return;
+    
+    setProject(prev => ({
+      ...prev,
+      divisions: prev.divisions.map(d => {
+        if (d.id !== divId) return d;
+        return {
+          ...d,
+          items: [...d.items, {
+            id: Date.now().toString(),
+            code: `${d.code}.${d.items.length + 1}`,
+            desc: desc,
+            unit: 'ea',
+            qty: 1,
+            matRate: 0,
+            labRate: 0,
+            plantRate: 0
+          }]
+        };
+      })
+    }));
+  };
+
+  // --- EXPORT TO CSV (SPREADSHEET) ---
+  const exportToCSV = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    // Header Row
+    csvContent += "Division,Item Code,Description,Unit,Quantity,Material Rate,Labor Rate,Plant Rate,Total Rate,Total Amount\n";
+
+    project.divisions.forEach(div => {
+      div.items.forEach(item => {
+        const totalRate = item.matRate + item.labRate + item.plantRate;
+        const totalAmount = totalRate * item.qty;
+        // Escape commas in description
+        const cleanDesc = `"${item.desc.replace(/"/g, '""')}"`;
+        
+        const row = [
+          div.name,
+          item.code,
+          cleanDesc,
+          item.unit,
+          item.qty,
+          item.matRate,
+          item.labRate,
+          item.plantRate,
+          totalRate,
+          totalAmount
+        ].join(",");
+        csvContent += row + "\n";
+      });
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${project.title.replace(/\s+/g, '_')}_BOQ.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-safe">
-      {view === 'dashboard' && (
-        <DashboardView 
-          history={history} 
-          onNewQuote={startNewQuote} 
-        />
-      )}
-      
-      {view === 'builder' && activeQuote && (
-        <QuoteBuilder 
-          quote={activeQuote} 
-          setQuote={setActiveQuote} 
-          onBack={() => setView('dashboard')}
-          onPreview={() => setView('preview')}
-          onSave={saveQuote}
-        />
-      )}
-
-      {view === 'preview' && activeQuote && (
-        <PreviewView 
-          quote={activeQuote} 
-          onBack={() => setView('builder')}
-        />
-      )}
-    </div>
-  );
-};
-
-// --- COMPONENT: DASHBOARD ---
-const DashboardView = ({ history, onNewQuote }) => {
-  return (
-    <div className="p-4 max-w-md mx-auto relative h-screen">
-      <header className="mb-8 pt-4">
-        <h1 className="text-2xl font-bold text-gray-800">Good Morning, Mike</h1>
-        <div className="flex gap-4 mt-4 overflow-x-auto pb-2">
-          <div className="bg-blue-600 text-white p-4 rounded-xl min-w-[140px] shadow-lg">
-            <p className="text-xs opacity-80">Won this Month</p>
-            <p className="text-2xl font-bold">$24,500</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-gray-200 min-w-[140px] shadow-sm">
-            <p className="text-xs text-gray-500">Pending</p>
-            <p className="text-2xl font-bold text-gray-800">3 Quotes</p>
-          </div>
-        </div>
-      </header>
-
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Recent Quotes</h2>
-        <div className="space-y-3 pb-20">
-          {history.map((q) => (
-            <div key={q.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center active:scale-95 transition-transform">
-              <div>
-                <h3 className="font-bold text-gray-800">{q.client}</h3>
-                <p className="text-xs text-gray-500">{q.date} • {q.status}</p>
-              </div>
-              <div className="text-right">
-                <span className="block font-bold text-blue-600">{formatCurrency(q.total)}</span>
-              </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* --- HEADER --- */}
+      <header className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-slate-400 text-xs uppercase tracking-widest font-bold">
+              <Briefcase size={14} />
+              Bill of Quantities
             </div>
-          ))}
+            <h1 className="text-xl font-bold mt-1">{project.title}</h1>
+            <p className="text-sm text-slate-400">{project.client}</p>
+          </div>
+          
+          <div className="flex items-center gap-4">
+             <div className="text-right hidden md:block">
+                <p className="text-xs text-slate-400 uppercase">Grand Total</p>
+                <p className="text-2xl font-bold text-green-400">{formatMoney(projectTotal, project.currency)}</p>
+             </div>
+             <button 
+                onClick={exportToCSV}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-lg"
+             >
+               <FileSpreadsheet size={18} />
+               <span className="hidden sm:inline">Export to Excel</span>
+             </button>
+          </div>
         </div>
-      </section>
-
-      {/* FAB */}
-      <button 
-        onClick={onNewQuote}
-        className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all active:scale-90"
-      >
-        <Plus size={32} strokeWidth={2.5} />
-      </button>
-    </div>
-  );
-};
-
-// --- COMPONENT: QUOTE BUILDER ---
-const QuoteBuilder = ({ quote, setQuote, onBack, onPreview, onSave }) => {
-  const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
-  
-  const { subtotal, tax, total } = useMemo(() => 
-    quote.items.reduce((acc, item) => {
-      const sum = acc.subtotal + (item.cost * item.qty);
-      return { subtotal: sum, tax: sum * quote.taxRate, total: sum * (1 + quote.taxRate) };
-    }, { subtotal: 0, tax: 0, total: 0 }), 
-  [quote.items, quote.taxRate]);
-
-  const updateField = (field, value) => setQuote({ ...quote, [field]: value });
-  
-  const updateItem = (id, field, value) => {
-    const newItems = quote.items.map(item => 
-      item.id === id ? { ...item, [field]: value } : item
-    );
-    setQuote({ ...quote, items: newItems });
-  };
-
-  const deleteItem = (id) => {
-    setQuote({ ...quote, items: quote.items.filter(i => i.id !== id) });
-  };
-
-  const addItem = (item) => {
-    // Check if item already exists to group (optional logic)
-    const newItem = {
-      ...item,
-      // Create unique instance ID
-      id: Math.random().toString(36).substr(2, 9), 
-      qty: 1
-    };
-    setQuote({ ...quote, items: [...quote.items, newItem] });
-    setIsItemPickerOpen(false);
-  };
-
-  return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Sticky Header */}
-      <header className="bg-white border-b border-gray-200 p-4 pt-12 sticky top-0 z-10 shadow-sm flex justify-between items-center">
-        <button onClick={onBack} className="p-2 -ml-2 text-gray-500"><ChevronLeft /></button>
-        <div className="flex-1 text-center">
-          <input 
-            type="text" 
-            placeholder="Client Name"
-            className="text-center font-bold text-gray-800 placeholder-gray-300 outline-none w-full bg-transparent"
-            value={quote.clientName}
-            onChange={(e) => updateField('clientName', e.target.value)}
-          />
-        </div>
-        <button onClick={onSave} className="p-2 -mr-2 text-blue-600"><Save size={20} /></button>
       </header>
 
-      {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-4 pb-32">
-        <div className="mb-6">
-          <label className="text-xs font-bold text-gray-400 uppercase tracking-wide">Project Details</label>
-          <input 
-            type="text" 
-            placeholder="Project Title (e.g. Kitchen Reno)"
-            className="w-full mt-1 p-3 bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 transition-colors"
-            value={quote.projectTitle}
-            onChange={(e) => updateField('projectTitle', e.target.value)}
-          />
-        </div>
+      {/* --- MOBILE TOTAL BAR (Sticky under header) --- */}
+      <div className="md:hidden bg-slate-800 text-white p-3 flex justify-between items-center sticky top-[88px] z-10 shadow-sm">
+         <span className="text-sm font-medium text-slate-300">Total Est. Cost</span>
+         <span className="text-lg font-bold text-green-400">{formatMoney(projectTotal, project.currency)}</span>
+      </div>
 
-        {quote.items.length === 0 ? (
-          <div className="text-center py-10 opacity-50">
-            <Calculator size={48} className="mx-auto mb-2" />
-            <p>No items yet. Tap + to start.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wide">Line Items</label>
-            {quote.items.map((item) => (
-              <div key={item.id} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm relative group">
-                <div className="flex justify-between items-start mb-2">
+      {/* --- MAIN CONTENT --- */}
+      <main className="max-w-6xl mx-auto p-2 md:p-6 pb-24">
+        
+        {/* DIVISIONS LIST */}
+        <div className="space-y-4">
+          {project.divisions.map((div) => (
+            <div key={div.id} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+              
+              {/* Division Header */}
+              <div 
+                onClick={() => toggleDivision(div.id)}
+                className="bg-slate-100 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-200 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  {div.isOpen ? <ChevronDown size={20} className="text-slate-500"/> : <ChevronRight size={20} className="text-slate-500"/>}
                   <div>
-                    <h4 className="font-semibold text-gray-800">{item.name}</h4>
-                    <p className="text-xs text-gray-500 bg-gray-100 inline-block px-2 py-0.5 rounded mt-1">{item.category}</p>
-                  </div>
-                  <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-500 p-1">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-                
-                <div className="flex items-end justify-between mt-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col">
-                        <label className="text-[10px] text-gray-400">QTY</label>
-                        <input 
-                          type="number" 
-                          className="w-16 p-1 bg-gray-50 rounded text-center font-bold border border-gray-200"
-                          value={item.qty}
-                          onChange={(e) => updateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
-                        />
-                    </div>
-                    <span className="text-gray-400 text-sm">x</span>
-                    <div className="flex flex-col">
-                        <label className="text-[10px] text-gray-400">UNIT ($)</label>
-                        <input 
-                          type="number" 
-                          className="w-20 p-1 bg-gray-50 rounded text-center font-bold border border-gray-200"
-                          value={item.cost}
-                          onChange={(e) => updateItem(item.id, 'cost', parseFloat(e.target.value) || 0)}
-                        />
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-800">{formatCurrency(item.qty * item.cost)}</p>
+                    <span className="font-mono text-xs font-bold bg-slate-300 text-slate-700 px-2 py-0.5 rounded mr-2">{div.code}</span>
+                    <span className="font-bold text-slate-800">{div.name}</span>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <button 
-          onClick={() => setIsItemPickerOpen(true)}
-          className="mt-6 w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition-all"
-        >
-          <Plus size={20} /> Add Material or Labor
-        </button>
-      </div>
-
-      {/* Sticky Footer */}
-      <div className="bg-white border-t border-gray-200 p-4 pb-8 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-20">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-gray-500">Subtotal</span>
-          <span className="font-semibold">{formatCurrency(subtotal)}</span>
-        </div>
-        <div className="flex justify-between items-center mb-4 text-xl font-bold text-gray-900">
-          <span>Total</span>
-          <span>{formatCurrency(total)}</span>
-        </div>
-        <button 
-          onClick={onPreview}
-          className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-        >
-          <FileText size={20} /> Review & Send
-        </button>
-      </div>
-
-      {/* Item Picker Bottom Sheet (Simulated) */}
-      {isItemPickerOpen && (
-        <ItemPicker 
-          onClose={() => setIsItemPickerOpen(false)} 
-          onSelect={addItem} 
-        />
-      )}
-    </div>
-  );
-};
-
-// --- COMPONENT: SMART ITEM PICKER ---
-const ItemPicker = ({ onClose, onSelect }) => {
-  const [search, setSearch] = useState('');
-  
-  const filteredItems = MATERIAL_DB.filter(item => 
-    item.name.toLowerCase().includes(search.toLowerCase()) || 
-    item.category.toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div 
-        className="bg-white rounded-t-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-4 border-b border-gray-100 flex items-center gap-2">
-          <Search className="text-gray-400" size={20} />
-          <input 
-            autoFocus
-            type="text" 
-            placeholder="Type 'Drywall', 'Paint', 'Labor'..." 
-            className="flex-1 text-lg outline-none font-medium placeholder-gray-400"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button onClick={onClose} className="text-gray-500 font-medium">Cancel</button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2">
-            {search === '' && (
-                <div className="p-2 mb-2">
-                    <p className="text-xs font-bold text-gray-400 uppercase mb-2">Suggested</p>
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                        {MATERIAL_DB.slice(0,3).map(i => (
-                            <button key={i.id} onClick={() => onSelect(i)} className="bg-blue-50 border border-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap">
-                                + {i.name}
-                            </button>
-                        ))}
-                    </div>
+                <div className="text-sm font-semibold text-slate-600">
+                  {formatMoney(div.items.reduce((acc, item) => acc + ((item.matRate + item.labRate + item.plantRate) * item.qty), 0), project.currency)}
                 </div>
-            )}
+              </div>
 
-          {filteredItems.map((item) => (
-            <button 
-              key={item.id}
-              onClick={() => onSelect(item)}
-              className="w-full text-left p-4 hover:bg-gray-50 border-b border-gray-50 flex justify-between items-center group"
-            >
-              <div>
-                <p className="font-semibold text-gray-800">{item.name}</p>
-                <p className="text-xs text-gray-400">{item.category}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                 <span className="text-sm font-medium text-gray-600">{formatCurrency(item.cost)} <span className="text-xs text-gray-400">/ {item.unit}</span></span>
-                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus size={16} />
-                 </div>
-              </div>
-            </button>
+              {/* Division Items (The Spreadsheet View) */}
+              {div.isOpen && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                      <tr>
+                        <th className="p-3 w-16">Code</th>
+                        <th className="p-3 min-w-[200px]">Description</th>
+                        <th className="p-3 w-16 text-center">Unit</th>
+                        <th className="p-3 w-20 text-center">Qty</th>
+                        <th className="p-3 w-24 text-right bg-blue-50/50">Mat Rate</th>
+                        <th className="p-3 w-24 text-right bg-orange-50/50">Lab Rate</th>
+                        <th className="p-3 w-24 text-right bg-purple-50/50">Plant</th>
+                        <th className="p-3 w-28 text-right">Amount</th>
+                        <th className="p-3 w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {div.items.map((item) => {
+                         const totalRate = item.matRate + item.labRate + item.plantRate;
+                         return (
+                          <tr key={item.id} className="hover:bg-slate-50 group">
+                            <td className="p-3 font-mono text-slate-500 text-xs">{item.code}</td>
+                            <td className="p-3">
+                              <input 
+                                type="text" 
+                                value={item.desc}
+                                onChange={(e) => updateItem(div.id, item.id, 'desc', e.target.value)}
+                                className="w-full bg-transparent outline-none border-b border-transparent focus:border-blue-500"
+                              />
+                            </td>
+                            <td className="p-3">
+                               <input 
+                                type="text" 
+                                value={item.unit}
+                                onChange={(e) => updateItem(div.id, item.id, 'unit', e.target.value)}
+                                className="w-full text-center bg-transparent outline-none border-b border-transparent focus:border-blue-500"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <input 
+                                type="number" 
+                                value={item.qty}
+                                onChange={(e) => updateItem(div.id, item.id, 'qty', e.target.value)}
+                                className="w-full text-center font-bold bg-slate-50 p-1 rounded border border-slate-200 focus:border-blue-500 outline-none"
+                              />
+                            </td>
+                            {/* Rates Inputs */}
+                            <td className="p-3 text-right bg-blue-50/30">
+                              <input 
+                                type="number" 
+                                value={item.matRate}
+                                onChange={(e) => updateItem(div.id, item.id, 'matRate', e.target.value)}
+                                className="w-full text-right bg-transparent outline-none text-slate-600 focus:text-blue-600"
+                              />
+                            </td>
+                            <td className="p-3 text-right bg-orange-50/30">
+                              <input 
+                                type="number" 
+                                value={item.labRate}
+                                onChange={(e) => updateItem(div.id, item.id, 'labRate', e.target.value)}
+                                className="w-full text-right bg-transparent outline-none text-slate-600 focus:text-orange-600"
+                              />
+                            </td>
+                            <td className="p-3 text-right bg-purple-50/30">
+                              <input 
+                                type="number" 
+                                value={item.plantRate}
+                                onChange={(e) => updateItem(div.id, item.id, 'plantRate', e.target.value)}
+                                className="w-full text-right bg-transparent outline-none text-slate-600 focus:text-purple-600"
+                              />
+                            </td>
+                            
+                            <td className="p-3 text-right font-bold text-slate-800">
+                              {formatMoney(totalRate * item.qty, '')}
+                            </td>
+                            <td className="p-3 text-center">
+                              <button onClick={() => deleteItem(div.id, item.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  
+                  <div className="p-3 bg-slate-50 border-t border-slate-100">
+                    <button 
+                      onClick={() => addItemToDivision(div.id)}
+                      className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    >
+                      <Plus size={16} /> Add Line Item
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ))}
         </div>
-      </div>
-    </div>
-  );
-};
 
-// --- COMPONENT: PDF PREVIEW ---
-const PreviewView = ({ quote, onBack }) => {
-    const { subtotal, tax, total } = quote.items.reduce((acc, item) => {
-        const sum = acc.subtotal + (item.cost * item.qty);
-        return { subtotal: sum, tax: sum * quote.taxRate, total: sum * (1 + quote.taxRate) };
-    }, { subtotal: 0, tax: 0, total: 0 });
+        {/* Add Division Button */}
+        <button 
+          onClick={addDivision}
+          className="mt-6 w-full py-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 font-bold flex items-center justify-center gap-2 hover:bg-slate-100 hover:border-slate-400 transition-all"
+        >
+          <Layers size={20} /> Add New Division (e.g., Electrical)
+        </button>
 
-  return (
-    <div className="flex flex-col h-screen bg-gray-800">
-        <header className="p-4 pt-12 text-white flex justify-between items-center">
-            <button onClick={onBack} className="flex items-center gap-1 text-gray-300 hover:text-white">
-                <ChevronLeft size={20} /> Edit
-            </button>
-            <h2 className="font-semibold">Preview</h2>
-            <div className="w-8"></div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto p-4">
-            {/* Paper Visualization */}
-            <div className="bg-white rounded-sm shadow-2xl min-h-[500px] p-8 max-w-2xl mx-auto text-sm">
-                <div className="flex justify-between border-b-2 border-gray-800 pb-4 mb-6">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-widest">Quote</h1>
-                        <p className="text-gray-500 mt-1">#{quote.id}</p>
-                    </div>
-                    <div className="text-right">
-                        <div className="font-bold text-lg">My Construction Co.</div>
-                        <div className="text-gray-500">123 Builder Lane</div>
-                        <div className="text-gray-500">555-0123</div>
-                    </div>
-                </div>
-
-                <div className="mb-8 bg-gray-50 p-4 rounded">
-                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Prepared For</p>
-                    <p className="font-bold text-lg">{quote.clientName || 'Client Name'}</p>
-                    <p>{quote.projectTitle}</p>
-                </div>
-
-                <table className="w-full mb-8">
-                    <thead className="border-b border-gray-300">
-                        <tr className="text-left text-gray-500">
-                            <th className="pb-2 font-medium">Description</th>
-                            <th className="pb-2 font-medium text-center">Qty</th>
-                            <th className="pb-2 font-medium text-right">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {quote.items.map((item, i) => (
-                            <tr key={i} className="border-b border-gray-100">
-                                <td className="py-3">
-                                    <p className="font-semibold">{item.name}</p>
-                                    <p className="text-xs text-gray-400">{item.category}</p>
-                                </td>
-                                <td className="py-3 text-center text-gray-600">{item.qty}</td>
-                                <td className="py-3 text-right font-medium">{formatCurrency(item.cost * item.qty)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-                <div className="flex justify-end">
-                    <div className="w-1/2">
-                        <div className="flex justify-between mb-2 text-gray-500">
-                            <span>Subtotal</span>
-                            <span>{formatCurrency(subtotal)}</span>
-                        </div>
-                        <div className="flex justify-between mb-2 text-gray-500">
-                            <span>Tax ({(quote.taxRate * 100).toFixed(0)}%)</span>
-                            <span>{formatCurrency(tax)}</span>
-                        </div>
-                        <div className="flex justify-between border-t border-gray-300 pt-2 font-bold text-xl text-gray-900">
-                            <span>Total</span>
-                            <span>{formatCurrency(total)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                {/* Photo Attachments Placeholder */}
-                <div className="mt-8 border-t border-gray-200 pt-4">
-                    <div className="flex items-center gap-2 text-gray-400 mb-2">
-                        <Camera size={16} />
-                        <span className="text-xs font-bold uppercase">Site Photos attached separately</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div className="p-4 pb-8 bg-gray-800">
-             <button className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2">
-                <Send size={20} /> Send Quote to Client
-            </button>
-        </div>
+      </main>
     </div>
   );
 };
