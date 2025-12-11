@@ -1,59 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#ffffff" />
-    <meta name="description" content="Professional Construction Quotation Builder" />
-    <title>Smart Quote | Builder App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- App Title -->
+    <title>Professional BOQ & Quotation Builder</title>
+    <meta name="description" content="Create professional construction Bills of Quantities, Estimates, and Quotations." />
 
-    <!-- 1. Google Fonts: Inter (Clean, professional, legible at small sizes) -->
+    <!-- Fonts: Inter (Professional Sans-Serif) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-    <!-- 2. Tailwind CSS (CDN for instant prototyping) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- 3. Tailwind Configuration -->
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            // Adds support for iPhone Home Bar spacing (env safe-area)
-            padding: {
-              'safe': 'env(safe-area-inset-bottom)',
-            }
-          }
-        }
-      }
-    </script>
-
-    <!-- 4. Mobile App-like Behavior Styles -->
+    <!-- Print Styles Fix: Ensures background colors print correctly -->
     <style>
       body {
-        /* Prevents standard touch highlighting on mobile tap */
-        -webkit-tap-highlight-color: transparent;
-        /* Prevents 'pull-to-refresh' on mobile which breaks app immersion */
-        overscroll-behavior-y: none;
+        font-family: 'Inter', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
       
-      /* Hide scrollbar for Chrome, Safari and Opera (Optional, for cleaner look) */
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      .no-scrollbar {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
+      /* Force background graphics when printing */
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        @page {
+          margin: 0; /* Removes default browser header/footers */
+          size: auto;
+        }
       }
     </style>
   </head>
-  <body>
+  <body class="bg-gray-100 text-slate-800">
     <div id="root"></div>
     
-
   </body>
 </html>
