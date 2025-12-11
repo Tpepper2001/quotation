@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -12,35 +12,51 @@ import {
   PenTool
 } from 'lucide-react';
 
-// --- 1. CONFIGURATION ---
+// --- 1. CONFIGURATION WITH PDF DATA ---
 const INITIAL_PROJECT = {
   title: "BILL OF QUANTITIES",
-  subTitle: "Rehabilitating and refurbishment of existing steel tank",
+  subTitle: "Rehabilitating and refurbishment of existing steel tank, Bital and Igabi PHC",
   clientLabel: "Client:",
-  clientName: "",
+  clientName: "Kaduna State Govt",
   dateLabel: "Date:",
   dateValue: new Date().toLocaleDateString(),
   currency: "₦", 
   logo: null,
-  // NEW FIELDS
-  multiplier: 1,
+  multiplier: 2, // Set to X2 based on your PDF
   multiplierLabel: "For two sites",
   showSignatures: true
 };
 
+// Default columns to match your PDF (Hidden Mat/Lab breakdown)
 const INITIAL_COLUMNS = {
   unit: { label: "UNIT", visible: true },
   qty: { label: "QTY", visible: true },
   waste: { label: "WST%", visible: false }, 
-  mat: { label: "MATERIAL", visible: true }, // Set to false in settings if you just want RATE
-  lab: { label: "LABOR", visible: true },    // Set to false in settings if you just want RATE
+  mat: { label: "MATERIAL", visible: false }, 
+  lab: { label: "LABOR", visible: false },    
   plant: { label: "PLANT", visible: false },
   rate: { label: "RATE", visible: true },
   amount: { label: "AMOUNT", visible: true }
 };
 
+// Data transcribed from your PDF
+const INITIAL_ITEMS = [
+  { id: '1', type: 'item', code: '01', desc: 'Cutting off corroded angle Iron, Scrapping and Washing of internal Section of Tank', unit: 'Lots', qty: 1, waste: 0, mat: 150000, lab: 0, plant: 0 },
+  { id: '2', type: 'item', code: '02', desc: 'Supply and Install, 2" x 2" x 4mm angle iron for internal brazzing and firm support of the tank', unit: 'Nos', qty: 10, waste: 0, mat: 12500, lab: 0, plant: 0 },
+  { id: '3', type: 'item', code: '03', desc: 'Supply and Install 2mm metal sheet for tank cover', unit: 'Shts', qty: 3, waste: 0, mat: 29000, lab: 0, plant: 0 },
+  { id: '4', type: 'item', code: '04', desc: 'Supply and paint internal section of tank, prime with red oxide - 2 coat', unit: 'Tins', qty: 4, waste: 0, mat: 25000, lab: 0, plant: 0 },
+  { id: '5', type: 'item', code: '05', desc: 'Supply and paint internal section of tank, with black bituminous paint - 2 coat', unit: 'Tin', qty: 5, waste: 0, mat: 45000, lab: 0, plant: 0 },
+  { id: '6', type: 'item', code: '06', desc: 'Supply and paint external section of tank prime with red oxide - 2 coat', unit: 'Tin', qty: 4, waste: 0, mat: 25000, lab: 0, plant: 0 },
+  { id: '7', type: 'item', code: '07', desc: 'Supply and paint external section of tank with bright aluminium paint - 2 coat', unit: 'Tin', qty: 4, waste: 0, mat: 38000, lab: 0, plant: 0 },
+  { id: '8', type: 'item', code: '08', desc: 'Supply and paint metal stanchions, steel ladder cage, pry and sec beams with walk way hands rails with bright auminium paints - 2 coats', unit: 'Tin', qty: 4, waste: 0, mat: 38000, lab: 0, plant: 0 },
+  { id: '9', type: 'item', code: '09', desc: 'Supply and apply thinner to red oxide and Aluminium paints', unit: 'Tin', qty: 4, waste: 0, mat: 24000, lab: 0, plant: 0 },
+  { id: '10', type: 'item', code: '12', desc: 'Mobilization of Materials, equipments and personnel to and from site', unit: 'Lots', qty: 1, waste: 0, mat: 100000, lab: 0, plant: 0 },
+  { id: '11', type: 'item', code: '13', desc: 'Disinfect the Supply and paint external section of tank prime with red oxide - 2 coat section of the tank using high test hydrochloric (HTH) and test run before commissioning', unit: 'Lots', qty: 1, waste: 0, mat: 50000, lab: 0, plant: 0 },
+  { id: '12', type: 'item', code: '14', desc: 'Associated labour', unit: 'Sum', qty: 1, waste: 0, mat: 200000, lab: 0, plant: 0 },
+];
+
 const App = () => {
-  const [items, setItems] = useState([]); 
+  const [items, setItems] = useState(INITIAL_ITEMS); 
   const [project, setProject] = useState(INITIAL_PROJECT);
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -51,8 +67,6 @@ const App = () => {
     const calculated = items.map(item => {
       if (item.type === 'item') {
         const wasteMultiplier = 1 + (item.waste / 100);
-        // If columns are hidden, we assume user might type directly into rate, 
-        // but for now we keep the formula capability.
         const rate = (item.mat * wasteMultiplier) + item.lab + item.plant;
         const total = rate * item.qty;
         return { ...item, calculatedRate: rate, calculatedTotal: total };
@@ -84,7 +98,7 @@ const App = () => {
     const newItem = {
       id: Date.now().toString(),
       type, 
-      code: items.length + 1 < 10 ? `0${items.length + 1}` : `${items.length + 1}`, // Auto-number logic 01, 02...
+      code: items.length + 1 < 10 ? `0${items.length + 1}` : `${items.length + 1}`,
       desc: type === 'section' ? 'SECTION TITLE' : '', 
       unit: type === 'item' ? 'Lot' : '', 
       qty: 1, waste: 0, mat: 0, lab: 0, plant: 0 
@@ -100,6 +114,12 @@ const App = () => {
       const url = URL.createObjectURL(file);
       updateProject('logo', url);
     }
+  };
+
+  // --- AUTO RESIZE TEXTAREA ---
+  const autoResize = (e) => {
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
   };
 
   // --- EXPORTS ---
@@ -127,12 +147,10 @@ const App = () => {
       csv += row + "\n";
     });
 
-    // Subtotal Row
     if (project.multiplier !== 1) {
         csv += `,,,Subtotal,,,,,,${subTotal.toFixed(2)}\n`;
         csv += `,,,${project.multiplierLabel} (x${project.multiplier}),,,,,, \n`;
     }
-    // Grand Total Row
     csv += `,,,GRAND TOTAL,,,,,,${grandTotal.toFixed(2)}`;
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -143,7 +161,6 @@ const App = () => {
     a.click();
   };
 
-  // --- RENDER HELPERS ---
   const formatMoney = (val) => {
     if (val === undefined || val === null) return '';
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
@@ -195,7 +212,7 @@ const App = () => {
                 </div>
               </div>
 
-              {/* Multiplier Settings (NEW) */}
+              {/* Multiplier Settings */}
               <div>
                 <h3 className="font-bold text-sm uppercase text-slate-500 mb-3 flex items-center gap-2"><Calculator size={14}/> Site Multiplier</h3>
                 <div className="mb-4">
@@ -219,7 +236,7 @@ const App = () => {
                 </div>
               </div>
 
-               {/* General Settings & Signatures */}
+               {/* General Settings */}
                <div className="col-span-2">
                 <h3 className="font-bold text-sm uppercase text-slate-500 mb-3">Document Settings</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -274,6 +291,7 @@ const App = () => {
                  value={project.subTitle} 
                  onChange={(e) => updateProject('subTitle', e.target.value)}
                  rows={2}
+                 onInput={autoResize}
                  className="text-lg text-slate-500 w-full font-medium bg-transparent outline-none resize-none overflow-hidden"
                  placeholder="Click to add project description..."
                />
@@ -303,18 +321,18 @@ const App = () => {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b-2 border-slate-900">
-                <th className="p-2 text-left font-bold w-12">S/N</th>
-                <th className="p-2 text-left font-bold">DESCRIPTION</th>
-                {columns.unit.visible && <th className="p-2 text-center font-bold w-16">{columns.unit.label}</th>}
-                {columns.qty.visible && <th className="p-2 text-center font-bold w-16">{columns.qty.label}</th>}
+                <th className="p-2 text-left font-bold w-12 align-top">S/N</th>
+                <th className="p-2 text-left font-bold align-top">DESCRIPTION</th>
+                {columns.unit.visible && <th className="p-2 text-center font-bold w-16 align-top">{columns.unit.label}</th>}
+                {columns.qty.visible && <th className="p-2 text-center font-bold w-16 align-top">{columns.qty.label}</th>}
                 
-                {columns.waste.visible && <th className="p-2 text-center font-bold text-xs text-gray-500 w-16 bg-gray-50 print:bg-transparent">{columns.waste.label}</th>}
-                {columns.mat.visible && <th className="p-2 text-right font-bold w-24 bg-blue-50/50 print:bg-transparent text-blue-900 print:text-black">{columns.mat.label}</th>}
-                {columns.lab.visible && <th className="p-2 text-right font-bold w-24 bg-orange-50/50 print:bg-transparent text-orange-900 print:text-black">{columns.lab.label}</th>}
-                {columns.plant.visible && <th className="p-2 text-right font-bold w-24 bg-purple-50/50 print:bg-transparent text-purple-900 print:text-black">{columns.plant.label}</th>}
+                {columns.waste.visible && <th className="p-2 text-center font-bold text-xs text-gray-500 w-16 bg-gray-50 print:bg-transparent align-top">{columns.waste.label}</th>}
+                {columns.mat.visible && <th className="p-2 text-right font-bold w-24 bg-blue-50/50 print:bg-transparent text-blue-900 print:text-black align-top">{columns.mat.label}</th>}
+                {columns.lab.visible && <th className="p-2 text-right font-bold w-24 bg-orange-50/50 print:bg-transparent text-orange-900 print:text-black align-top">{columns.lab.label}</th>}
+                {columns.plant.visible && <th className="p-2 text-right font-bold w-24 bg-purple-50/50 print:bg-transparent text-purple-900 print:text-black align-top">{columns.plant.label}</th>}
                 
-                {columns.rate.visible && <th className="p-2 text-right font-bold w-28">{columns.rate.label}</th>}
-                {columns.amount.visible && <th className="p-2 text-right font-black w-32 bg-gray-50 print:bg-transparent">{columns.amount.label} ({project.currency})</th>}
+                {columns.rate.visible && <th className="p-2 text-right font-bold w-28 align-top">{columns.rate.label}</th>}
+                {columns.amount.visible && <th className="p-2 text-right font-black w-32 bg-gray-50 print:bg-transparent align-top">{columns.amount.label} ({project.currency})</th>}
                 <th className="print:hidden w-8"></th>
               </tr>
             </thead>
@@ -334,11 +352,11 @@ const App = () => {
                 if (item.type === 'section') {
                   return (
                     <tr key={item.id} className="bg-yellow-50 print:bg-transparent border-b border-black">
-                      <td className="p-2 font-bold"><input value={item.code} onChange={(e) => updateItem(item.id, 'code', e.target.value)} className="bg-transparent w-full font-bold outline-none"/></td>
-                      <td colSpan={10} className="p-2">
+                      <td className="p-2 font-bold align-top"><input value={item.code} onChange={(e) => updateItem(item.id, 'code', e.target.value)} className="bg-transparent w-full font-bold outline-none"/></td>
+                      <td colSpan={10} className="p-2 align-top">
                         <input value={item.desc} onChange={(e) => updateItem(item.id, 'desc', e.target.value)} className="bg-transparent w-full font-bold uppercase text-red-700 print:text-black outline-none placeholder-red-200" placeholder="SECTION TITLE"/>
                       </td>
-                      <td className="print:hidden p-2 text-center">
+                      <td className="print:hidden p-2 text-center align-top">
                         <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                       </td>
                     </tr>
@@ -348,7 +366,16 @@ const App = () => {
                 return (
                   <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50 print:hover:bg-transparent group break-inside-avoid">
                     <td className="p-2 align-top"><input value={item.code} onChange={(e) => updateItem(item.id, 'code', e.target.value)} className="bg-transparent w-full text-gray-500 outline-none text-center"/></td>
-                    <td className="p-2 align-top"><textarea value={item.desc} onChange={(e) => updateItem(item.id, 'desc', e.target.value)} rows={1} className="bg-transparent w-full outline-none resize-none overflow-hidden h-auto min-h-[1.5em]"/></td>
+                    <td className="p-2 align-top">
+                        {/* THE AUTO-RESIZING DESCRIPTION BOX */}
+                        <textarea 
+                            value={item.desc} 
+                            onChange={(e) => updateItem(item.id, 'desc', e.target.value)}
+                            onInput={autoResize} 
+                            rows={1} 
+                            className="bg-transparent w-full outline-none resize-none overflow-hidden h-auto min-h-[3em] whitespace-pre-wrap"
+                        />
+                    </td>
                     
                     {columns.unit.visible && <td className="p-2 align-top"><input value={item.unit} onChange={(e) => updateItem(item.id, 'unit', e.target.value)} className="bg-transparent w-full text-center outline-none"/></td>}
                     {columns.qty.visible && <td className="p-2 align-top"><input type="number" value={item.qty} onChange={(e) => updateItem(item.id, 'qty', parseFloat(e.target.value))} className="bg-transparent w-full text-center font-bold outline-none"/></td>}
@@ -358,7 +385,22 @@ const App = () => {
                     {columns.lab.visible && <td className="p-2 align-top bg-orange-50/30 print:bg-transparent"><input type="number" value={item.lab} onChange={(e) => updateItem(item.id, 'lab', parseFloat(e.target.value))} className="bg-transparent w-full text-right text-xs text-orange-800 print:text-black outline-none"/></td>}
                     {columns.plant.visible && <td className="p-2 align-top bg-purple-50/30 print:bg-transparent"><input type="number" value={item.plant} onChange={(e) => updateItem(item.id, 'plant', parseFloat(e.target.value))} className="bg-transparent w-full text-right text-xs text-purple-800 print:text-black outline-none"/></td>}
                     
-                    {columns.rate.visible && <td className="p-2 align-top text-right font-medium text-gray-600">{formatMoney(item.calculatedRate)}</td>}
+                    {/* Rate Input: If Columns are hidden, allow direct edit. If shown, read-only calculation */}
+                    {columns.rate.visible && (
+                        <td className="p-2 align-top text-right font-medium text-gray-600">
+                           {!columns.mat.visible && !columns.lab.visible ? (
+                               <input 
+                                 type="number" 
+                                 value={item.mat} // We map rate to material for simple inputs
+                                 onChange={(e) => updateItem(item.id, 'mat', parseFloat(e.target.value))} 
+                                 className="bg-transparent w-full text-right outline-none font-medium"
+                               />
+                           ) : (
+                               formatMoney(item.calculatedRate)
+                           )}
+                        </td>
+                    )}
+
                     {columns.amount.visible && <td className="p-2 align-top text-right font-bold bg-gray-50 print:bg-transparent">{formatMoney(item.calculatedTotal)}</td>}
                     
                     <td className="print:hidden p-2 text-center align-top">
