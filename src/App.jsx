@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -8,26 +8,25 @@ import {
   Upload,
   LayoutTemplate,
   Briefcase,
-  Calculator,
-  PenTool
+  Calculator
 } from 'lucide-react';
 
-// --- 1. CONFIGURATION WITH PDF DATA ---
+// --- 1. BLANK CONFIGURATION ---
 const INITIAL_PROJECT = {
   title: "BILL OF QUANTITIES",
-  subTitle: "Rehabilitating and refurbishment of existing steel tank, Bital and Igabi PHC",
+  subTitle: "", // Blank
   clientLabel: "Client:",
-  clientName: "Kaduna State Govt",
+  clientName: "",
   dateLabel: "Date:",
   dateValue: new Date().toLocaleDateString(),
   currency: "₦", 
   logo: null,
-  multiplier: 2, // Set to X2 based on your PDF
-  multiplierLabel: "For two sites",
+  multiplier: 1, // Default to 1 site
+  multiplierLabel: "Site Multiplier",
   showSignatures: true
 };
 
-// Default columns to match your PDF (Hidden Mat/Lab breakdown)
+// Default columns: Hidden detailed breakdown for cleaner "Rate | Amount" view
 const INITIAL_COLUMNS = {
   unit: { label: "UNIT", visible: true },
   qty: { label: "QTY", visible: true },
@@ -39,24 +38,8 @@ const INITIAL_COLUMNS = {
   amount: { label: "AMOUNT", visible: true }
 };
 
-// Data transcribed from your PDF
-const INITIAL_ITEMS = [
-  { id: '1', type: 'item', code: '01', desc: 'Cutting off corroded angle Iron, Scrapping and Washing of internal Section of Tank', unit: 'Lots', qty: 1, waste: 0, mat: 150000, lab: 0, plant: 0 },
-  { id: '2', type: 'item', code: '02', desc: 'Supply and Install, 2" x 2" x 4mm angle iron for internal brazzing and firm support of the tank', unit: 'Nos', qty: 10, waste: 0, mat: 12500, lab: 0, plant: 0 },
-  { id: '3', type: 'item', code: '03', desc: 'Supply and Install 2mm metal sheet for tank cover', unit: 'Shts', qty: 3, waste: 0, mat: 29000, lab: 0, plant: 0 },
-  { id: '4', type: 'item', code: '04', desc: 'Supply and paint internal section of tank, prime with red oxide - 2 coat', unit: 'Tins', qty: 4, waste: 0, mat: 25000, lab: 0, plant: 0 },
-  { id: '5', type: 'item', code: '05', desc: 'Supply and paint internal section of tank, with black bituminous paint - 2 coat', unit: 'Tin', qty: 5, waste: 0, mat: 45000, lab: 0, plant: 0 },
-  { id: '6', type: 'item', code: '06', desc: 'Supply and paint external section of tank prime with red oxide - 2 coat', unit: 'Tin', qty: 4, waste: 0, mat: 25000, lab: 0, plant: 0 },
-  { id: '7', type: 'item', code: '07', desc: 'Supply and paint external section of tank with bright aluminium paint - 2 coat', unit: 'Tin', qty: 4, waste: 0, mat: 38000, lab: 0, plant: 0 },
-  { id: '8', type: 'item', code: '08', desc: 'Supply and paint metal stanchions, steel ladder cage, pry and sec beams with walk way hands rails with bright auminium paints - 2 coats', unit: 'Tin', qty: 4, waste: 0, mat: 38000, lab: 0, plant: 0 },
-  { id: '9', type: 'item', code: '09', desc: 'Supply and apply thinner to red oxide and Aluminium paints', unit: 'Tin', qty: 4, waste: 0, mat: 24000, lab: 0, plant: 0 },
-  { id: '10', type: 'item', code: '12', desc: 'Mobilization of Materials, equipments and personnel to and from site', unit: 'Lots', qty: 1, waste: 0, mat: 100000, lab: 0, plant: 0 },
-  { id: '11', type: 'item', code: '13', desc: 'Disinfect the Supply and paint external section of tank prime with red oxide - 2 coat section of the tank using high test hydrochloric (HTH) and test run before commissioning', unit: 'Lots', qty: 1, waste: 0, mat: 50000, lab: 0, plant: 0 },
-  { id: '12', type: 'item', code: '14', desc: 'Associated labour', unit: 'Sum', qty: 1, waste: 0, mat: 200000, lab: 0, plant: 0 },
-];
-
 const App = () => {
-  const [items, setItems] = useState(INITIAL_ITEMS); 
+  const [items, setItems] = useState([]); // Start Empty
   const [project, setProject] = useState(INITIAL_PROJECT);
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -67,6 +50,8 @@ const App = () => {
     const calculated = items.map(item => {
       if (item.type === 'item') {
         const wasteMultiplier = 1 + (item.waste / 100);
+        // Formula: (Mat * Waste) + Lab + Plant
+        // If Mat/Lab hidden, we treat 'mat' as the base Rate input
         const rate = (item.mat * wasteMultiplier) + item.lab + item.plant;
         const total = rate * item.qty;
         return { ...item, calculatedRate: rate, calculatedTotal: total };
@@ -98,6 +83,7 @@ const App = () => {
     const newItem = {
       id: Date.now().toString(),
       type, 
+      // Auto-increment code logic (01, 02...)
       code: items.length + 1 < 10 ? `0${items.length + 1}` : `${items.length + 1}`,
       desc: type === 'section' ? 'SECTION TITLE' : '', 
       unit: type === 'item' ? 'Lot' : '', 
@@ -367,7 +353,7 @@ const App = () => {
                   <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50 print:hover:bg-transparent group break-inside-avoid">
                     <td className="p-2 align-top"><input value={item.code} onChange={(e) => updateItem(item.id, 'code', e.target.value)} className="bg-transparent w-full text-gray-500 outline-none text-center"/></td>
                     <td className="p-2 align-top">
-                        {/* THE AUTO-RESIZING DESCRIPTION BOX */}
+                        {/* AUTO-RESIZING DESCRIPTION BOX */}
                         <textarea 
                             value={item.desc} 
                             onChange={(e) => updateItem(item.id, 'desc', e.target.value)}
@@ -385,13 +371,13 @@ const App = () => {
                     {columns.lab.visible && <td className="p-2 align-top bg-orange-50/30 print:bg-transparent"><input type="number" value={item.lab} onChange={(e) => updateItem(item.id, 'lab', parseFloat(e.target.value))} className="bg-transparent w-full text-right text-xs text-orange-800 print:text-black outline-none"/></td>}
                     {columns.plant.visible && <td className="p-2 align-top bg-purple-50/30 print:bg-transparent"><input type="number" value={item.plant} onChange={(e) => updateItem(item.id, 'plant', parseFloat(e.target.value))} className="bg-transparent w-full text-right text-xs text-purple-800 print:text-black outline-none"/></td>}
                     
-                    {/* Rate Input: If Columns are hidden, allow direct edit. If shown, read-only calculation */}
+                    {/* Rate Logic: If breakdown columns are hidden, Rate is editable. Else it is calculated. */}
                     {columns.rate.visible && (
                         <td className="p-2 align-top text-right font-medium text-gray-600">
                            {!columns.mat.visible && !columns.lab.visible ? (
                                <input 
                                  type="number" 
-                                 value={item.mat} // We map rate to material for simple inputs
+                                 value={item.mat} // Map to 'mat' as underlying storage
                                  onChange={(e) => updateItem(item.id, 'mat', parseFloat(e.target.value))} 
                                  className="bg-transparent w-full text-right outline-none font-medium"
                                />
